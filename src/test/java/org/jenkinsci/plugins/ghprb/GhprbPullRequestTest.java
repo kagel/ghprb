@@ -90,7 +90,7 @@ public class GhprbPullRequestTest {
 
         // Mocks for GhprbRepository
         given(repo.getName()).willReturn(null);
-        doNothing().when(repo).addComment(eq(10), anyString());
+        doNothing().when(repo).addOrUpdateComment(eq(10), anyString(), null, null);
 
         // Mocks for Ghprb
         given(helper.isWhitelisted(ghUser)).willReturn(true);
@@ -127,7 +127,7 @@ public class GhprbPullRequestTest {
 
         // Mocks for GhprbRepository
         given(repo.getName()).willReturn("name");
-        doNothing().when(repo).addComment(eq(10), anyString());
+        doNothing().when(repo).addOrUpdateComment(eq(10), anyString(), null, null);
 
         // Mocks for Ghprb
         given(helper.isWhitelisted(ghUser)).willReturn(true);

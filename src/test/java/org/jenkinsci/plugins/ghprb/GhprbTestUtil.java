@@ -295,8 +295,6 @@ public class GhprbTestUtil {
         jsonObject.put("retestPhrase", "retest this please");
         jsonObject.put("skipBuildPhrase", "[skip ci]");
         jsonObject.put("cron", "0 0 31 2 0");
-        jsonObject.put("useComments", "true");
-        jsonObject.put("useDetailedComments", "false");
         jsonObject.put("logExcerptLines", "0");
         jsonObject.put("unstableAs", "FAILURE");
         jsonObject.put("testMode", "true");

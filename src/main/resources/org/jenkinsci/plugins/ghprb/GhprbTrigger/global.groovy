@@ -6,14 +6,11 @@ f.section(title: descriptor.displayName) {
   f.entry(field: "githubAuth", title: _("GitHub Auth")) {
     f.repeatableProperty(field: "githubAuth", default: descriptor.getGithubAuth()) 
   }
-  f.entry(field: "useComments", title: _("Use comments to report results when updating commit status fails")) {
-    f.checkbox() 
-  }
-  f.entry(field: "useDetailedComments", title: _("Use comments to report intermediate phases: triggered et al")) {
-    f.checkbox() 
-  }
   f.entry(field: "adminlist", title: _("Admin list")) {
     f.textarea() 
+  }
+  f.entry(field: "outputFile", title: _("Output file name")) {
+    f.textbox(default: "output.txt")
   }
   f.advanced() {
     f.entry(field: "unstableAs", title: _("Mark Unstable build in github as")) {

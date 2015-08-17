@@ -8,8 +8,8 @@
         <version>1.532</version>
     </parent>
 
-    <artifactId>ghprb</artifactId>
-    <name>GitHub Pull Request Builder</name>
+    <artifactId>ghprb-fork</artifactId>
+    <name>GitHub Pull Request Builder [fork]</name>
     <version>1.26-SNAPSHOT</version>
     <packaging>hpi</packaging>
 
@@ -53,7 +53,7 @@
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>github-api</artifactId>
-            <version>1.66</version>
+            <version>1.69</version>
         </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>

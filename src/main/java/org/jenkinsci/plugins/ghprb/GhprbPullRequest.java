@@ -76,15 +76,7 @@ public class GhprbPullRequest {
         this.helper = helper;
         this.repo = repo;
 
-        if (helper.isWhitelisted(author)) {
-            accepted = true;
-            shouldRun = true;
-        } else {
-            logger.log(Level.INFO, "Author of #{0} {1} on {2} not in whitelist!", new Object[] { id, author.getLogin(), reponame });
-            repo.addComment(id, GhprbTrigger.getDscp().getRequestForTestingPhrase());
-        }
-
-        logger.log(Level.INFO, "Created Pull Request #{0} on {1} by {2} ({3}) updated at: {4} SHA: {5}", 
+        logger.log(Level.INFO, "Created Pull Request #{0} on {1} by {2} ({3}) updated at: {4} SHA: {5}",
                 new Object[] { id, reponame, author.getLogin(), authorEmail, updated, head }
         );
     }

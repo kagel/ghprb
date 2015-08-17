@@ -1,24 +1,31 @@
 package org.jenkinsci.plugins.ghprb;
 
 import com.google.common.annotations.VisibleForTesting;
-
 import hudson.model.AbstractBuild;
 import hudson.model.TaskListener;
 import jenkins.model.Jenkins;
-
-import org.jenkinsci.plugins.ghprb.extensions.GhprbCommentAppender;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbCommitStatusException;
-import org.jenkinsci.plugins.ghprb.extensions.GhprbExtension;
-import org.jenkinsci.plugins.ghprb.extensions.comments.GhprbBuildStatus;
-import org.kohsuke.github.*;
+import org.kohsuke.github.GHCommitState;
+import org.kohsuke.github.GHEvent;
 import org.kohsuke.github.GHEventPayload.IssueComment;
 import org.kohsuke.github.GHEventPayload.PullRequest;
+import org.kohsuke.github.GHHook;
+import org.kohsuke.github.GHIssueComment;
+import org.kohsuke.github.GHIssueState;
+import org.kohsuke.github.GHPullRequest;
+import org.kohsuke.github.GHRepository;
+import org.kohsuke.github.GitHub;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.URL;
-import java.util.*;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -153,38 +160,13 @@ public class GhprbRepository {
         } else {
             logger.log(Level.INFO, newMessage, baseException);
         }
-        if (GhprbTrigger.getDscp().getUseComments()) {
-
-            StringBuilder msg = new StringBuilder(ex.getMessage());
-
-            if (build != null) {
-                msg.append("\n");
-                GhprbTrigger trigger = Ghprb.extractTrigger(build);
-                for (GhprbExtension ext : Ghprb.matchesAll(trigger.getExtensions(), GhprbBuildStatus.class)) {
-                    if (ext instanceof GhprbCommentAppender) {
-                        msg.append(((GhprbCommentAppender) ext).postBuildComment(build, null));
-                    }
-                }
-            }
-
-            if (GhprbTrigger.getDscp().getUseDetailedComments() || (state == GHCommitState.SUCCESS || state == GHCommitState.FAILURE)) {
-                logger.log(Level.INFO, "Trying to send comment.", baseException);
-                addComment(ex.getId(), msg.toString());
-            }
-        } else {
-            logger.log(Level.SEVERE, "Could not update commit status of the Pull Request on GitHub.");
-        }
     }
 
     public String getName() {
         return reponame;
     }
 
-    public void addComment(int id, String comment) {
-        addComment(id, comment, null, null);
-    }
-
-    public void addComment(int id, String comment, AbstractBuild<?, ?> build, TaskListener listener) {
+    public void addOrUpdateComment(int id, String comment, AbstractBuild<?, ?> build, TaskListener listener) {
         if (comment.trim().isEmpty())
             return;
 
@@ -197,11 +179,52 @@ public class GhprbRepository {
         }
 
         try {
-            getGitHubRepo().getPullRequest(id).comment(comment);
+            addOrUpdateComment(getGitHubRepo().getPullRequest(id), comment);
         } catch (IOException ex) {
             logger.log(Level.SEVERE, "Couldn't add comment to pull request #" + id + ": '" + comment + "'", ex);
         }
     }
+
+    private void addOrUpdateComment(GHPullRequest pullRequest, String commentStr) throws IOException {
+        List<GHIssueComment> comments;
+        try {
+            comments = pullRequest.getComments();
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Error loading comments from pull request", e);
+            return;
+        }
+        String myself;
+        try {
+            myself = helper.getGitHub().get().getMyself().getLogin();
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Error getting myself from github", e);
+            return;
+        }
+        GHIssueComment myComment = null;
+        for (GHIssueComment comment : comments) {
+            try {
+                if (myself.equals(comment.getUser().getLogin())) {
+                    myComment = comment;
+                    break;
+                }
+            } catch (IOException e) {
+                logger.log(Level.SEVERE, "Error getting user from comment", e);
+                return;
+            }
+        }
+        if (myComment == null) {
+            pullRequest.comment(commentStr);
+            logger.log(Level.FINE, "Posted new comment");
+        } else {
+            if (!myComment.getBody().equals(commentStr)) {
+                myComment.update(myComment.getBody() + "\r\n\r\n" + commentStr);
+                logger.log(Level.FINE, "Updated comment body");
+            } else {
+                logger.log(Level.FINE, "Comment body has not changed");
+            }
+        }
+    }
+
 
     public void closePullRequest(int id) {
         try {

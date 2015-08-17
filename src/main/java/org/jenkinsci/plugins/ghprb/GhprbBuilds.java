@@ -1,11 +1,13 @@
 package org.jenkinsci.plugins.ghprb;
 
+import com.google.common.base.Strings;
 import hudson.Util;
 import hudson.model.AbstractBuild;
 import hudson.model.TaskListener;
 import hudson.model.queue.QueueTaskFuture;
 import hudson.plugins.git.util.BuildData;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbCommentAppender;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbCommitStatus;
@@ -16,6 +18,7 @@ import org.kohsuke.github.GHIssueState;
 import org.kohsuke.github.GHPullRequest;
 import org.kohsuke.github.GHUser;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.HashMap;
@@ -174,7 +177,7 @@ public class GhprbBuilds {
         GHCommitState state;
         state = Ghprb.getState(build);
 
-        commentOnBuildResult(build, listener, state, c);
+        commentOnBuildResult(build, listener, c);
         // close failed pull request automatically
         if (state == GHCommitState.FAILURE && trigger.isAutoCloseFailedPullRequests()) {
             closeFailedRequest(listener, c);
@@ -194,18 +197,20 @@ public class GhprbBuilds {
         }
     }
 
-    private void commentOnBuildResult(AbstractBuild<?, ?> build, TaskListener listener, GHCommitState state, GhprbCause c) {
-        StringBuilder msg = new StringBuilder();
+    private void commentOnBuildResult(AbstractBuild<?, ?> build, TaskListener listener, GhprbCause c) {
+        String outputFile = trigger.getDescriptor().getOutputFile();
+        String outputFileResolved = Ghprb.replaceMacros(build, listener, outputFile);
 
-        for (GhprbExtension ext : Ghprb.getJobExtensions(trigger, GhprbCommentAppender.class)) {
-            if (ext instanceof GhprbCommentAppender) {
-                msg.append(((GhprbCommentAppender) ext).postBuildComment(build, listener));
-            }
+        String msg = null;
+        try {
+            msg = FileUtils.readFileToString(new File(outputFileResolved));
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Unable to read comment from output file at " + outputFileResolved);
         }
 
-        if (msg.length() > 0) {
+        if (!Strings.isNullOrEmpty(msg)) {
             listener.getLogger().println(msg);
-            repo.addComment(c.getPullID(), msg.toString(), build, listener);
+            repo.addOrUpdateComment(c.getPullID(), msg, build, listener);
         }
     }
 

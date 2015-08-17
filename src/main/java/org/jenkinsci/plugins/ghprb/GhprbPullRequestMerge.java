@@ -1,33 +1,30 @@
 package org.jenkinsci.plugins.ghprb;
 
-import java.io.IOException;
-import java.io.PrintStream;
-import java.util.concurrent.ConcurrentMap;
-
-import org.kohsuke.github.GHBranch;
-import org.kohsuke.github.GHPullRequestCommitDetail.Commit;
-import org.kohsuke.github.GHPullRequest;
-import org.kohsuke.github.GHPullRequestCommitDetail;
-import org.kohsuke.github.GHUser;
-import org.kohsuke.stapler.AncestorInPath;
-import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.QueryParameter;
-
 import com.google.common.annotations.VisibleForTesting;
-
 import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
+import hudson.model.AbstractBuild;
+import hudson.model.AbstractProject;
 import hudson.model.BuildListener;
 import hudson.model.Cause;
 import hudson.model.Result;
-import hudson.model.AbstractBuild;
-import hudson.model.AbstractProject;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Publisher;
 import hudson.tasks.Recorder;
 import hudson.util.FormValidation;
+import org.kohsuke.github.GHPullRequest;
+import org.kohsuke.github.GHPullRequestCommitDetail;
+import org.kohsuke.github.GHPullRequestCommitDetail.Commit;
+import org.kohsuke.github.GHUser;
+import org.kohsuke.stapler.AncestorInPath;
+import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.QueryParameter;
+
+import java.io.IOException;
+import java.io.PrintStream;
+import java.util.concurrent.ConcurrentMap;
 
 public class GhprbPullRequestMerge extends Recorder {
 
@@ -114,7 +111,6 @@ public class GhprbPullRequestMerge extends Recorder {
 
         if (isMergeable == null || !isMergeable) {
             logger.println("Pull request cannot be automerged.");
-            commentOnRequest("Pull request is not mergeable.");
             listener.finished(Result.FAILURE);
             return false;
         }
@@ -135,20 +131,16 @@ public class GhprbPullRequestMerge extends Recorder {
         if (isOnlyAdminsMerge() && (triggerSender == null || !helper.isAdmin(triggerSender) )) {
             merge = false;
             logger.println("Only admins can merge this pull request, " + triggerSender.getLogin() + " is not an admin.");
-            commentOnRequest(String.format("Code not merged because %s is not in the Admin list.", triggerSender.getName()));
         }
 
         if (isOnlyTriggerPhrase() && (commentBody == null || !helper.isTriggerPhrase(cause.getCommentBody()) )) {
             merge = false;
             logger.println("The comment does not contain the required trigger phrase.");
-
-            commentOnRequest(String.format("Please comment with '%s' to automerge this request", trigger.getTriggerPhrase()));
         }
 
         if (isDisallowOwnCode() && (triggerSender == null || isOwnCode(pr, triggerSender) )) {
             merge = false;
             logger.println("The commentor is also one of the contributors.");
-            commentOnRequest(String.format("Code not merged because %s has committed code in the request.", triggerSender.getName()));
         }
 
         if (merge) {
@@ -156,7 +148,6 @@ public class GhprbPullRequestMerge extends Recorder {
 
             pr.merge(getMergeComment());
             logger.println("Pull request successfully merged");
-            // deleteBranch(); //TODO: Update so it also deletes the branch being pulled from. probably make it an option.
         }
 
         if (merge) {
@@ -165,26 +156,6 @@ public class GhprbPullRequestMerge extends Recorder {
             listener.finished(Result.FAILURE);
         }
         return merge;
-    }
-
-    private void deleteBranch() {
-        String branchName = pr.getHead().getRef();
-        try {
-            GHBranch branch = pr.getRepository().getBranches().get(branchName);
-
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-    }
-
-    private void commentOnRequest(String comment) {
-        try {
-            helper.getRepository().addComment(pr.getNumber(), comment);
-        } catch (Exception e) {
-            logger.println("Failed to add comment");
-            e.printStackTrace(logger);
-        }
     }
 
     private boolean isOwnCode(GHPullRequest pr, GHUser committer) {
@@ -207,7 +178,7 @@ public class GhprbPullRequestMerge extends Recorder {
 
     private GhprbCause getCause(AbstractBuild<?, ?> build) {
         Cause cause = build.getCause(GhprbCause.class);
-        if (cause == null || (!(cause instanceof GhprbCause)))
+        if (cause == null)
             return null;
         return (GhprbCause) cause;
     }
