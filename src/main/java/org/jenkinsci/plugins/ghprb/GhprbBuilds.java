@@ -6,10 +6,9 @@ import hudson.model.AbstractBuild;
 import hudson.model.TaskListener;
 import hudson.model.queue.QueueTaskFuture;
 import hudson.plugins.git.util.BuildData;
-
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
-import org.jenkinsci.plugins.ghprb.extensions.GhprbCommentAppender;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbCommitStatus;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbCommitStatusException;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbExtension;
@@ -198,20 +197,30 @@ public class GhprbBuilds {
     }
 
     private void commentOnBuildResult(AbstractBuild<?, ?> build, TaskListener listener, GhprbCause c) {
-        String outputFile = trigger.getDescriptor().getOutputFile();
-        String outputFileResolved = Ghprb.replaceMacros(build, listener, outputFile);
+        String outputFilename = getWorkspace(build) + getOutputFilename(build, listener);
+        File outputFile = new File(outputFilename);
 
-        String msg = null;
+        String msg;
         try {
-            msg = FileUtils.readFileToString(new File(outputFileResolved));
+            msg = FileUtils.readFileToString(outputFile);
         } catch (IOException e) {
-            logger.log(Level.SEVERE, "Unable to read comment from output file at " + outputFileResolved);
+            logger.log(Level.SEVERE, "Unable to read comment from output file at " + outputFilename);
+            return;
         }
+
+        String md5 = DigestUtils.md5Hex(msg);
 
         if (!Strings.isNullOrEmpty(msg)) {
-            listener.getLogger().println(msg);
-            repo.addOrUpdateComment(c.getPullID(), msg, build, listener);
+            repo.addOrUpdateComment(c.getPullID(), msg, md5, build, listener);
         }
+    }
+
+    private String getOutputFilename(AbstractBuild<?, ?> build, TaskListener listener) {
+        return Ghprb.replaceMacros(build, listener, trigger.getDescriptor().getOutputFile());
+    }
+
+    private String getWorkspace(AbstractBuild<?, ?> build) {
+        return build.getWorkspace().getRemote() + File.separator;
     }
 
 }

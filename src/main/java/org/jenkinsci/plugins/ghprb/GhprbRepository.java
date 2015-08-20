@@ -29,6 +29,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * @author Honza Brázdil <jbrazdil@redhat.com>
@@ -37,6 +39,9 @@ public class GhprbRepository {
 
     private static final Logger logger = Logger.getLogger(GhprbRepository.class.getName());
     private static final EnumSet<GHEvent> HOOK_EVENTS = EnumSet.of(GHEvent.ISSUE_COMMENT, GHEvent.PULL_REQUEST);
+    private static final String MD5_SIGNATURE_PREFIX = "\nmd5 hash: ";
+    private static final String MD5_SIGNATURE_REGEXP = MD5_SIGNATURE_PREFIX + "([a-f0-9]{32})";
+    private static final Pattern MD5_SIGNATURE_PATTERN = Pattern.compile(MD5_SIGNATURE_REGEXP);
 
     private final String reponame;
     private final ConcurrentMap<Integer, GhprbPullRequest> pulls;
@@ -166,7 +171,7 @@ public class GhprbRepository {
         return reponame;
     }
 
-    public void addOrUpdateComment(int id, String comment, AbstractBuild<?, ?> build, TaskListener listener) {
+    public void addOrUpdateComment(int id, String comment, String md5, AbstractBuild<?, ?> build, TaskListener listener) {
         if (comment.trim().isEmpty())
             return;
 
@@ -179,16 +184,16 @@ public class GhprbRepository {
         }
 
         try {
-            addOrUpdateComment(getGitHubRepo().getPullRequest(id), comment);
+            addOrUpdateComment(getGitHubRepo().getPullRequest(id), comment, md5);
         } catch (IOException ex) {
             logger.log(Level.SEVERE, "Couldn't add comment to pull request #" + id + ": '" + comment + "'", ex);
         }
     }
 
-    private void addOrUpdateComment(GHPullRequest pullRequest, String commentStr) throws IOException {
-        List<GHIssueComment> comments;
+    private void addOrUpdateComment(GHPullRequest pullRequest, String commentStr, String md5) throws IOException {
+        List<GHIssueComment> commentsList;
         try {
-            comments = pullRequest.getComments();
+            commentsList = pullRequest.getComments();
         } catch (IOException e) {
             logger.log(Level.SEVERE, "Error loading comments from pull request", e);
             return;
@@ -201,7 +206,7 @@ public class GhprbRepository {
             return;
         }
         GHIssueComment myComment = null;
-        for (GHIssueComment comment : comments) {
+        for (GHIssueComment comment : commentsList) {
             try {
                 if (myself.equals(comment.getUser().getLogin())) {
                     myComment = comment;
@@ -212,11 +217,21 @@ public class GhprbRepository {
                 return;
             }
         }
+        commentStr = commentStr + MD5_SIGNATURE_PREFIX + md5;
         if (myComment == null) {
             pullRequest.comment(commentStr);
             logger.log(Level.FINE, "Posted new comment");
         } else {
-            if (!myComment.getBody().equals(commentStr)) {
+
+            Matcher matcher = MD5_SIGNATURE_PATTERN.matcher(myComment.getBody());
+
+            String prevMd5 = null;
+            while (matcher.find()) {
+                prevMd5 = matcher.group(1);
+            }
+
+            boolean changed = prevMd5 == null || !md5.equals(prevMd5);
+            if (changed) {
                 myComment.update(myComment.getBody() + "\r\n\r\n" + commentStr);
                 logger.log(Level.FINE, "Updated comment body");
             } else {
@@ -224,7 +239,6 @@ public class GhprbRepository {
             }
         }
     }
-
 
     public void closePullRequest(int id) {
         try {

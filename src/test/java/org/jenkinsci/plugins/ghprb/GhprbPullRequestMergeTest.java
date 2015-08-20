@@ -132,7 +132,7 @@ public class GhprbPullRequestMergeTest {
 
         given(listener.getLogger()).willReturn(logger);
 
-        doNothing().when(repo).addOrUpdateComment(anyInt(), anyString(), null, null);
+        doNothing().when(repo).addOrUpdateComment(anyInt(), anyString(), anyString(), null, null);
         doNothing().when(logger).println();
 
         Field parentField = Run.class.getDeclaredField("project");
