@@ -232,7 +232,7 @@ public class GhprbRepository {
 
             boolean changed = prevMd5 == null || !md5.equals(prevMd5);
             if (changed) {
-                myComment.update(myComment.getBody() + "\r\n\r\n" + commentStr);
+                myComment.update(commentStr);
                 logger.log(Level.FINE, "Updated comment body");
             } else {
                 logger.log(Level.FINE, "Comment body has not changed");
