@@ -1,50 +1,48 @@
 package org.jenkinsci.plugins.ghprb;
 
 import antlr.ANTLRException;
-
 import com.coravy.hudson.plugins.github.GithubProjectProperty;
 import com.google.common.annotations.VisibleForTesting;
-
 import com.google.common.collect.Iterables;
 import hudson.Extension;
 import hudson.Util;
-import hudson.model.*;
 import hudson.model.AbstractProject;
+import hudson.model.Item;
+import hudson.model.ParameterDefinition;
+import hudson.model.ParameterValue;
+import hudson.model.ParametersAction;
+import hudson.model.ParametersDefinitionProperty;
+import hudson.model.Run;
+import hudson.model.Saveable;
+import hudson.model.StringParameterValue;
 import hudson.model.queue.QueueTaskFuture;
 import hudson.plugins.git.util.BuildData;
 import hudson.triggers.TriggerDescriptor;
 import hudson.util.DescribableList;
-import hudson.util.FormValidation;
-import hudson.util.ListBoxModel;
-import hudson.util.ListBoxModel.Option;
+import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
-
 import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbCommitStatus;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbExtension;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbExtensionDescriptor;
 import org.jenkinsci.plugins.ghprb.extensions.comments.GhprbBuildLog;
-import org.jenkinsci.plugins.ghprb.extensions.comments.GhprbBuildResultMessage;
-import org.jenkinsci.plugins.ghprb.extensions.comments.GhprbBuildStatus;
 import org.jenkinsci.plugins.ghprb.extensions.comments.GhprbPublishJenkinsUrl;
 import org.jenkinsci.plugins.ghprb.extensions.status.GhprbSimpleStatus;
 import org.kohsuke.github.GHCommitState;
 import org.kohsuke.github.GitHub;
 import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 
-import javax.servlet.ServletException;
-
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
-
-import jenkins.model.Jenkins;
 
 /**
  * @author Honza Brázdil <jbrazdil@redhat.com>
@@ -54,20 +52,11 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
     @Extension
     public static final DescriptorImpl DESCRIPTOR = new DescriptorImpl();
     private static final Logger logger = Logger.getLogger(GhprbTrigger.class.getName());
-    private final String adminlist;
-    private final Boolean allowMembersOfWhitelistedOrgsAsAdmin;
-    private final String orgslist;
     private final String cron;
-    private final String triggerPhrase;
     private final String buildDescTemplate;
-    private final String outputFile;
-    private final Boolean onlyTriggerPhrase;
     private final Boolean useGitHubHooks;
-    private final Boolean permitAll;
-    private String whitelist;
     private Boolean autoCloseFailedPullRequests;
     private Boolean displayBuildErrorsOnDownstreamBuilds;
-    private List<GhprbBranch> whiteListTargetBranches;
     private transient Ghprb helper;
     private String project;
     private AbstractProject<?, ?> _project;
@@ -98,44 +87,20 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
     }
 
     @DataBoundConstructor
-
-    public GhprbTrigger(String adminlist,
-            String whitelist,
-            String orgslist,
-            String cron,
-            String triggerPhrase,
-            Boolean onlyTriggerPhrase, 
+    public GhprbTrigger(String cron,
             Boolean useGitHubHooks,
-            Boolean permitAll,
             Boolean autoCloseFailedPullRequests,
             Boolean displayBuildErrorsOnDownstreamBuilds,
-            String commentFilePath, 
-            List<GhprbBranch> whiteListTargetBranches,
-            Boolean allowMembersOfWhitelistedOrgsAsAdmin, 
-            String msgSuccess, 
-            String msgFailure, 
-            String commitStatusContext,
             String gitHubAuthId,
             String buildDescTemplate,
-            List<GhprbExtension> extensions,
-            String outputFile
-            ) throws ANTLRException {
+            List<GhprbExtension> extensions) throws ANTLRException {
         super(cron);
-        this.adminlist = adminlist;
-        this.whitelist = whitelist;
-        this.orgslist = orgslist;
         this.cron = cron;
-        this.triggerPhrase = triggerPhrase;
-        this.onlyTriggerPhrase = onlyTriggerPhrase;
         this.useGitHubHooks = useGitHubHooks;
-        this.permitAll = permitAll;
         this.autoCloseFailedPullRequests = autoCloseFailedPullRequests;
         this.displayBuildErrorsOnDownstreamBuilds = displayBuildErrorsOnDownstreamBuilds;
-        this.whiteListTargetBranches = whiteListTargetBranches;
         this.gitHubAuthId = gitHubAuthId;
-        this.allowMembersOfWhitelistedOrgsAsAdmin = allowMembersOfWhitelistedOrgsAsAdmin;
         this.buildDescTemplate = buildDescTemplate;
-        this.outputFile = outputFile;
         setExtensions(extensions);
         configVersion = 1;
     }
@@ -230,20 +195,9 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
         final String commitSha = cause.isMerged() ? "origin/pr/" + cause.getPullID() + "/merge" : cause.getCommit();
         values.add(new StringParameterValue("sha1", commitSha));
         values.add(new StringParameterValue("ghprbActualCommit", cause.getCommit()));
-        String triggerAuthor = "";
-        String triggerAuthorEmail = "";
-
-        try {
-            triggerAuthor = getString(cause.getTriggerSender().getName(), "");
-        } catch (Exception e) {}
-        try {
-            triggerAuthorEmail = getString(cause.getTriggerSender().getEmail(), "");
-        } catch (Exception e) {}
 
         setCommitAuthor(cause, values);
 
-        values.add(new StringParameterValue("ghprbTriggerAuthor", triggerAuthor));
-        values.add(new StringParameterValue("ghprbTriggerAuthorEmail", triggerAuthorEmail));
         final StringParameterValue pullIdPv = new StringParameterValue("ghprbPullId", String.valueOf(cause.getPullID()));
         values.add(pullIdPv);
         values.add(new StringParameterValue("ghprbTargetBranch", String.valueOf(cause.getTargetBranch())));
@@ -355,42 +309,8 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
         return values;
     }
 
-    public void addWhitelist(String author) {
-        whitelist = whitelist + " " + author;
-        try {
-            this.job.save();
-        } catch (IOException ex) {
-            logger.log(Level.SEVERE, "Failed to save new whitelist", ex);
-        }
-    }
-    
     public String getBuildDescTemplate() {
         return buildDescTemplate == null ? "" : buildDescTemplate;
-    }
-
-    public String getAdminlist() {
-        if (adminlist == null) {
-            return "";
-        }
-        return adminlist;
-    }
-
-    public Boolean getAllowMembersOfWhitelistedOrgsAsAdmin() {
-        return allowMembersOfWhitelistedOrgsAsAdmin != null && allowMembersOfWhitelistedOrgsAsAdmin;
-    }
-
-    public String getWhitelist() {
-        if (whitelist == null) {
-            return "";
-        }
-        return whitelist;
-    }
-
-    public String getOrgslist() {
-        if (orgslist == null) {
-            return "";
-        }
-        return orgslist;
     }
 
     public String getCron() {
@@ -401,23 +321,8 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
         return project;
     }
 
-    public String getTriggerPhrase() {
-        if (triggerPhrase == null) {
-            return "";
-        }
-        return triggerPhrase;
-    }
-
-    public Boolean getOnlyTriggerPhrase() {
-        return onlyTriggerPhrase != null && onlyTriggerPhrase;
-    }
-
     public Boolean getUseGitHubHooks() {
         return useGitHubHooks != null && useGitHubHooks;
-    }
-
-    public Boolean getPermitAll() {
-        return permitAll != null && permitAll;
     }
 
     public Boolean isAutoCloseFailedPullRequests() {
@@ -434,13 +339,6 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
             return (displayErrors != null && displayErrors);
         }
         return displayBuildErrorsOnDownstreamBuilds;
-    }
-
-    public List<GhprbBranch> getWhiteListTargetBranches() {
-        if (whiteListTargetBranches == null) {
-            return new ArrayList<GhprbBranch>();
-        }
-        return whiteListTargetBranches;
     }
 
     public GhprbWebHook getWebHook() {
@@ -476,8 +374,6 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
 
     public static final class DescriptorImpl extends TriggerDescriptor {
         // GitHub username may only contain alphanumeric characters or dashes and cannot begin with a dash
-        private static final Pattern adminlistPattern = Pattern.compile("((\\p{Alnum}[\\p{Alnum}-]*)|\\s)*");
-        
         private Integer configVersion;
 
         /**
@@ -487,14 +383,9 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
          * value in the global.jelly file as this value is dynamic and will not be
          * retained once configure() is called.
          */
-        private String whitelistPhrase = ".*add\\W+to\\W+whitelist.*";
-        private String okToTestPhrase = ".*ok\\W+to\\W+test.*";
-        private String retestPhrase = ".*test\\W+this\\W+please.*";
-        private String skipBuildPhrase = ".*\\[skip\\W+ci\\].*";
         private String cron = "H/5 * * * *";
         private String outputFile = "output.txt";
         private GHCommitState unstableAs = GHCommitState.FAILURE;
-        private List<GhprbBranch> whiteListTargetBranches;
         private Boolean autoCloseFailedPullRequests = false;
         private Boolean displayBuildErrorsOnDownstreamBuilds = false;
         
@@ -526,17 +417,6 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
             return githubAuth;
         }
         
-        public List<GhprbGitHubAuth> getDefaultAuth(List<GhprbGitHubAuth> githubAuth) {
-            if (githubAuth != null && githubAuth.size() > 0) {
-                return githubAuth;
-            }
-            return getGithubAuth();
-        }
-        
-        private String adminlist;
-        
-        private String requestForTestingPhrase;
-
         // map of jobs (by their fullName) and their map of pull requests
         private Map<String, ConcurrentMap<Integer, GhprbPullRequest>> jobs;
         
@@ -578,12 +458,6 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
 
         @Override
         public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
-            adminlist = formData.getString("adminlist");
-            requestForTestingPhrase = formData.getString("requestForTestingPhrase");
-            whitelistPhrase = formData.getString("whitelistPhrase");
-            okToTestPhrase = formData.getString("okToTestPhrase");
-            retestPhrase = formData.getString("retestPhrase");
-            skipBuildPhrase = formData.getString("skipBuildPhrase");
             cron = formData.getString("cron");
             outputFile = formData.getString("outputFile");
             unstableAs = GHCommitState.valueOf(formData.getString("unstableAs"));
@@ -607,52 +481,6 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
         }
         
 
-        public FormValidation doCheckAdminlist(@QueryParameter String value) throws ServletException {
-            if (!adminlistPattern.matcher(value).matches()) {
-                return FormValidation.error("GitHub username may only contain alphanumeric characters or dashes "
-                        + "and cannot begin with a dash. Separate them with whitespaces.");
-            }
-            return FormValidation.ok();
-        }
-        
-        public ListBoxModel doFillUnstableAsItems() {
-            ListBoxModel items = new ListBoxModel();
-            GHCommitState[] results = new GHCommitState[] {GHCommitState.SUCCESS,GHCommitState.ERROR,GHCommitState.FAILURE};
-            for (GHCommitState nextResult : results) {
-                String text = StringUtils.capitalize(nextResult.toString().toLowerCase());
-                items.add(text, nextResult.toString());
-                if (unstableAs.toString().equals(nextResult)) {
-                    items.get(items.size()-1).selected = true;
-                } 
-            }
-
-            return items;
-        }
-        
-        public String getAdminlist() {
-            return adminlist;
-        }
-
-        public String getRequestForTestingPhrase() {
-            return requestForTestingPhrase;
-        }
-
-        public String getWhitelistPhrase() {
-            return whitelistPhrase;
-        }
-
-        public String getOkToTestPhrase() {
-            return okToTestPhrase;
-        }
-
-        public String getRetestPhrase() {
-            return retestPhrase;
-        }
-
-        public String getSkipBuildPhrase() {
-            return skipBuildPhrase;
-        }
-
         public String getCron() {
             return cron;
         }
@@ -673,33 +501,10 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
             return outputFile;
         }
 
-        public void setOutputFile(String outputFile) {
-            this.outputFile = outputFile;
-        }
-
-        public ListBoxModel doFillGitHubAuthIdItems(@QueryParameter("gitHubAuthId") String gitHubAuthId) {
-            ListBoxModel model = new ListBoxModel();
-            for (GhprbGitHubAuth auth : getGithubAuth()) {
-                String description = Util.fixNull(auth.getDescription());
-                int length = description.length();
-                length = length > 50 ? 50 : length;
-                Option next = new Option(auth.getServerAPIUrl() + " : " + description.substring(0, length), auth.getId());
-                if (!StringUtils.isEmpty(gitHubAuthId) && gitHubAuthId.equals(auth.getId())) {
-                    next.selected = true;
-                }
-                model.add(next);
-            }
-            return model;
-        }
-        
-
         public ConcurrentMap<Integer, GhprbPullRequest> getPullRequests(String projectName) {
             ConcurrentMap<Integer, GhprbPullRequest> ret;
             if (jobs.containsKey(projectName)) {
                 Map<Integer, GhprbPullRequest> map = jobs.get(projectName);
-                if (!(map instanceof ConcurrentMap)) {
-                    map = new ConcurrentHashMap<Integer, GhprbPullRequest>(map);
-                }
                 jobs.put(projectName, (ConcurrentMap<Integer, GhprbPullRequest>) map);
                 ret = (ConcurrentMap<Integer, GhprbPullRequest>) map;
             } else {
@@ -709,19 +514,10 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
             return ret;
         }
 
-        public List<GhprbBranch> getWhiteListTargetBranches() {
-            return whiteListTargetBranches;
-        }
-        
-
         @Deprecated
         private transient String publishedURL;
         @Deprecated
         private transient Integer logExcerptLines;
-        @Deprecated
-        private transient String msgSuccess;
-        @Deprecated
-        private transient String msgFailure;
         @Deprecated
         private transient String commitStatusContext;
         @Deprecated
@@ -746,19 +542,7 @@ public class GhprbTrigger extends GhprbTriggerBackwardsCompatible {
                 addIfMissing(new GhprbPublishJenkinsUrl(publishedURL));
                 publishedURL = null;
             }
-            if (!StringUtils.isEmpty(msgFailure) || !StringUtils.isEmpty(msgSuccess)) {
-                List<GhprbBuildResultMessage> messages = new ArrayList<GhprbBuildResultMessage>(2);
-                if (!StringUtils.isEmpty(msgFailure)) {
-                    messages.add(new GhprbBuildResultMessage(GHCommitState.FAILURE, msgFailure));
-                    msgFailure = null;
-                }
-                if (!StringUtils.isEmpty(msgSuccess)) {
-                    messages.add(new GhprbBuildResultMessage(GHCommitState.SUCCESS, msgSuccess));
-                    msgSuccess = null;
-                }
-                addIfMissing(new GhprbBuildStatus(messages));
-            }
-            
+
             if (configVersion < 1) {
                 GhprbSimpleStatus status = new GhprbSimpleStatus(commitStatusContext);
                 addIfMissing(status);

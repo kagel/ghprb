@@ -290,26 +290,6 @@ public class GhprbRepository {
         return getGitHubRepo().getPullRequest(id);
     }
 
-    void onIssueCommentHook(IssueComment issueComment) throws IOException {
-        if (helper.isProjectDisabled()) {
-            logger.log(Level.FINE, "Not checking comments since build is disabled");
-            return;
-        }
-        int id = issueComment.getIssue().getNumber();
-        logger.log(Level.FINER, "Comment on issue #{0} from {1}: {2}", new Object[] { id, issueComment.getComment().getUser(), issueComment.getComment().getBody() });
-        if (!"created".equals(issueComment.getAction())) {
-            return;
-        }
-
-        GhprbPullRequest pull = pulls.get(id);
-        if (pull == null) {
-            pull = new GhprbPullRequest(getGitHubRepo().getPullRequest(id), helper, this);
-            pulls.put(id, pull);
-        }
-        pull.check(issueComment.getComment());
-        GhprbTrigger.getDscp().save();
-    }
-
     void onPullRequestHook(PullRequest pr) {
         if ("closed".equals(pr.getAction())) {
             pulls.remove(pr.getNumber());

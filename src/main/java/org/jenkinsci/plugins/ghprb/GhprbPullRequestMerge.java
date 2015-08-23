@@ -30,44 +30,22 @@ public class GhprbPullRequestMerge extends Recorder {
 
     private PrintStream logger;
 
-    private final boolean onlyAdminsMerge;
-    private final boolean disallowOwnCode;
-    private boolean onlyTriggerPhrase;
     private String mergeComment;
 
     @DataBoundConstructor
-    public GhprbPullRequestMerge(String mergeComment, boolean onlyTriggerPhrase, boolean onlyAdminsMerge, boolean disallowOwnCode) {
-
+    public GhprbPullRequestMerge(String mergeComment) {
         this.mergeComment = mergeComment;
-        this.onlyTriggerPhrase = onlyTriggerPhrase;
-        this.onlyAdminsMerge = onlyAdminsMerge;
-        this.disallowOwnCode = disallowOwnCode;
     }
 
     public String getMergeComment() {
         return mergeComment;
     }
 
-    public boolean isOnlyTriggerPhrase() {
-        return onlyTriggerPhrase;
-    }
-
-    public boolean isOnlyAdminsMerge() {
-        return onlyAdminsMerge;
-    }
-
-    public boolean isDisallowOwnCode() {
-        return disallowOwnCode;
-    }
-
     public BuildStepMonitor getRequiredMonitorService() {
         return BuildStepMonitor.BUILD;
     }
 
-    private GhprbTrigger trigger;
     private Ghprb helper;
-    private GhprbCause cause;
-    private GHPullRequest pr;
 
     @VisibleForTesting
     void setHelper(Ghprb helper) {
@@ -83,18 +61,18 @@ public class GhprbPullRequestMerge extends Recorder {
             return true;
         }
 
-        trigger = Ghprb.extractTrigger(project);
+        GhprbTrigger trigger = Ghprb.extractTrigger(project);
         if (trigger == null)
             return false;
 
-        cause = getCause(build);
+        GhprbCause cause = getCause(build);
         if (cause == null) {
             return true;
         }
 
         ConcurrentMap<Integer, GhprbPullRequest> pulls = trigger.getDescriptor().getPullRequests(project.getFullName());
 
-        pr = pulls.get(cause.getPullID()).getPullRequest();
+        GHPullRequest pr = pulls.get(cause.getPullID()).getPullRequest();
 
         if (pr == null) {
             logger.println("Pull request is null for ID: " + cause.getPullID());
@@ -115,47 +93,13 @@ public class GhprbPullRequestMerge extends Recorder {
             return false;
         }
 
-        GHUser triggerSender = cause.getTriggerSender();
+        logger.println("Merging the pull request");
 
-        // ignore comments from bot user, this fixes an issue where the bot would auto-merge
-        // a PR when the 'request for testing' phrase contains the PR merge trigger phrase and
-        // the bot is a member of a whitelisted organisation
-        if (helper.isBotUser(triggerSender)) {
-            logger.println("Comment from bot user " + triggerSender.getLogin() + " ignored.");
-            return false;
-        }
+        pr.merge(getMergeComment());
+        logger.println("Pull request successfully merged");
 
-        boolean merge = true;
-        String commentBody = cause.getCommentBody();
-
-        if (isOnlyAdminsMerge() && (triggerSender == null || !helper.isAdmin(triggerSender) )) {
-            merge = false;
-            logger.println("Only admins can merge this pull request, " + triggerSender.getLogin() + " is not an admin.");
-        }
-
-        if (isOnlyTriggerPhrase() && (commentBody == null || !helper.isTriggerPhrase(cause.getCommentBody()) )) {
-            merge = false;
-            logger.println("The comment does not contain the required trigger phrase.");
-        }
-
-        if (isDisallowOwnCode() && (triggerSender == null || isOwnCode(pr, triggerSender) )) {
-            merge = false;
-            logger.println("The commentor is also one of the contributors.");
-        }
-
-        if (merge) {
-            logger.println("Merging the pull request");
-
-            pr.merge(getMergeComment());
-            logger.println("Pull request successfully merged");
-        }
-
-        if (merge) {
-            listener.finished(Result.SUCCESS);
-        } else {
-            listener.finished(Result.FAILURE);
-        }
-        return merge;
+        listener.finished(Result.SUCCESS);
+        return true;
     }
 
     private boolean isOwnCode(GHPullRequest pr, GHUser committer) {

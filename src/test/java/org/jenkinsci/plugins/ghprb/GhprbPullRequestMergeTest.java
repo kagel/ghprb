@@ -1,21 +1,13 @@
 package org.jenkinsci.plugins.ghprb;
 
-import java.io.IOException;
-import java.io.PrintStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.lang.reflect.Field;
-
+import com.coravy.hudson.plugins.github.GithubProjectProperty;
 import hudson.model.AbstractBuild;
 import hudson.model.FreeStyleBuild;
-import hudson.model.ItemGroup;
-import hudson.model.StreamBuildListener;
 import hudson.model.FreeStyleProject;
-import hudson.model.Run;
+import hudson.model.ItemGroup;
 import hudson.model.Result;
-
+import hudson.model.Run;
+import hudson.model.StreamBuildListener;
 import org.jenkinsci.plugins.ghprb.GhprbTrigger.DescriptorImpl;
 import org.junit.After;
 import org.junit.Before;
@@ -34,16 +26,21 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
 
-import com.coravy.hudson.plugins.github.GithubProjectProperty;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import static org.fest.assertions.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.doNothing;
 
 @RunWith(MockitoJUnitRunner.class)
 public class GhprbPullRequestMergeTest {
@@ -76,32 +73,18 @@ public class GhprbPullRequestMergeTest {
     @Mock
     private ItemGroup<?> parent;
 
-    private final String triggerPhrase = "ok to merge";
-    private final String nonTriggerPhrase = "This phrase is not the trigger phrase";
-
-    private final String adminList = "admin";
-
     private final String adminLogin = "admin";
-    private final String nonAdminLogin = "nonadmin";
 
     private final String committerName = "committer";
-    private final String nonCommitterName = "noncommitter";
-
-    private final String mergeComment = "merge";
-
-    private final Integer pullId = 1;
-
-    private Map<String, Object> triggerValues;
 
     @Before
     public void beforeTest() throws Exception {
-        triggerValues = new HashMap<String, Object>(10);
-        triggerValues.put("adminlist", adminList);
-        triggerValues.put("triggerPhrase", triggerPhrase);
-        
+        Map<String, Object> triggerValues = new HashMap<String, Object>(10);
+
         GhprbTrigger trigger = spy(GhprbTestUtil.getTrigger(triggerValues));
 
         ConcurrentMap<Integer, GhprbPullRequest> pulls = new ConcurrentHashMap<Integer, GhprbPullRequest>(1);
+        Integer pullId = 1;
         pulls.put(pullId, pullRequest);
         Map<String, ConcurrentMap<Integer, GhprbPullRequest>> jobs = new HashMap<String, ConcurrentMap<Integer, GhprbPullRequest>>(1);
         jobs.put("project", pulls);
@@ -127,7 +110,6 @@ public class GhprbPullRequestMergeTest {
 
         given(cause.getPullID()).willReturn(pullId);
         given(cause.isMerged()).willReturn(true);
-        given(cause.getTriggerSender()).willReturn(triggerSender);
         given(cause.getCommitAuthor()).willReturn(committer);
 
         given(listener.getLogger()).willReturn(logger);
@@ -146,7 +128,6 @@ public class GhprbPullRequestMergeTest {
         helper = spy(new Ghprb(project, trigger, pulls));
         trigger.setHelper(helper);
         given(helper.getRepository()).willReturn(repo);
-        given(helper.isBotUser(any(GHUser.class))).willReturn(false);
     }
 
     @After
@@ -155,7 +136,7 @@ public class GhprbPullRequestMergeTest {
     }
 
     @SuppressWarnings("unchecked")
-    private void setupConditions(String triggerLogin, String committerName, String comment) throws IOException {
+    private void setupConditions(String triggerLogin, String committerName) throws IOException {
         given(triggerSender.getLogin()).willReturn(triggerLogin);
         given(triggerSender.getName()).willReturn(committerName);
         given(committer.getName()).willReturn(this.committerName);
@@ -175,12 +156,11 @@ public class GhprbPullRequestMergeTest {
 
         given(commitDetail.getCommit()).willReturn(commit);
         given(commit.getCommitter()).willReturn(committer);
-
-        given(cause.getCommentBody()).willReturn(comment);
     }
 
-    private GhprbPullRequestMerge setupMerger(boolean onlyTriggerPhrase, boolean onlyAdminsMerge, boolean disallowOwnCode) {
-        GhprbPullRequestMerge merger = spy(new GhprbPullRequestMerge(mergeComment, onlyTriggerPhrase, onlyAdminsMerge, disallowOwnCode));
+    private GhprbPullRequestMerge setupMerger() {
+        String mergeComment = "merge";
+        GhprbPullRequestMerge merger = spy(new GhprbPullRequestMerge(mergeComment));
 
         merger.setHelper(helper);
 
@@ -188,119 +168,32 @@ public class GhprbPullRequestMergeTest {
     }
 
     @Test
-    public void testApproveMerge() throws Exception {
-
-        boolean onlyTriggerPhrase = false;
-        boolean onlyAdminsMerge = false;
-        boolean disallowOwnCode = false;
-
-        GhprbPullRequestMerge merger = setupMerger(onlyTriggerPhrase, onlyAdminsMerge, disallowOwnCode);
-
-        setupConditions(nonAdminLogin, committerName, triggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(adminLogin, nonCommitterName, triggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(adminLogin, committerName, nonTriggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(nonAdminLogin, nonCommitterName, triggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(nonAdminLogin, nonCommitterName, nonTriggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(adminLogin, nonCommitterName, nonTriggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(nonAdminLogin, nonCommitterName, nonTriggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(adminLogin, committerName, triggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-    }
-
-    @Test
-    public void testAdminMerge() throws Exception {
-
-        boolean onlyTriggerPhrase = false;
-        boolean onlyAdminsMerge = true;
-        boolean disallowOwnCode = false;
-
-        GhprbPullRequestMerge merger = setupMerger(onlyTriggerPhrase, onlyAdminsMerge, disallowOwnCode);
-
-        setupConditions(adminLogin, committerName, triggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(nonAdminLogin, committerName, triggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(false);
-    }
-
-    @Test
     public void testTriggerMerge() throws Exception {
 
-        boolean onlyTriggerPhrase = true;
-        boolean onlyAdminsMerge = false;
-        boolean disallowOwnCode = false;
+        @SuppressWarnings("ConstantConditions") GhprbPullRequestMerge merger = setupMerger();
 
-        GhprbPullRequestMerge merger = setupMerger(onlyTriggerPhrase, onlyAdminsMerge, disallowOwnCode);
-
-        setupConditions(adminLogin, committerName, triggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(adminLogin, committerName, nonTriggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(false);
-    }
-
-    @Test
-    public void testOwnCodeMerge() throws Exception {
-
-        boolean onlyTriggerPhrase = false;
-        boolean onlyAdminsMerge = false;
-        boolean disallowOwnCode = true;
-
-        GhprbPullRequestMerge merger = setupMerger(onlyTriggerPhrase, onlyAdminsMerge, disallowOwnCode);
-
-        setupConditions(adminLogin, nonCommitterName, triggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
-
-        setupConditions(adminLogin, committerName, triggerPhrase);
+        setupConditions(adminLogin, committerName);
         assertThat(merger.perform(build, null, listener)).isEqualTo(false);
     }
 
     @Test
     public void testDenyMerge() throws Exception {
 
-        boolean onlyTriggerPhrase = true;
-        boolean onlyAdminsMerge = true;
-        boolean disallowOwnCode = true;
+        @SuppressWarnings("ConstantConditions") GhprbPullRequestMerge merger = setupMerger();
 
-        GhprbPullRequestMerge merger = setupMerger(onlyTriggerPhrase, onlyAdminsMerge, disallowOwnCode);
-
-        setupConditions(nonAdminLogin, nonCommitterName, triggerPhrase);
+        String nonCommitterName = "noncommitter";
+        setupConditions(adminLogin, nonCommitterName);
         assertThat(merger.perform(build, null, listener)).isEqualTo(false);
 
-        setupConditions(adminLogin, committerName, triggerPhrase);
+        String nonAdminLogin = "nonadmin";
+        setupConditions(nonAdminLogin, nonCommitterName);
         assertThat(merger.perform(build, null, listener)).isEqualTo(false);
 
-        setupConditions(adminLogin, nonCommitterName, nonTriggerPhrase);
+        setupConditions(adminLogin, committerName);
         assertThat(merger.perform(build, null, listener)).isEqualTo(false);
 
-        setupConditions(nonAdminLogin, nonCommitterName, triggerPhrase);
+        setupConditions(nonAdminLogin, committerName);
         assertThat(merger.perform(build, null, listener)).isEqualTo(false);
-
-        setupConditions(nonAdminLogin, nonCommitterName, nonTriggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(false);
-
-        setupConditions(adminLogin, committerName, nonTriggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(false);
-
-        setupConditions(nonAdminLogin, committerName, nonTriggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(false);
-
-        setupConditions(adminLogin, nonCommitterName, triggerPhrase);
-        assertThat(merger.perform(build, null, listener)).isEqualTo(true);
     }
 
 }

@@ -55,9 +55,6 @@ public class GhprbPullRequestTest {
         // Mocks for GhprbRepository
         given(repo.getName()).willReturn("repoName");
 
-        // Mocks for Ghprb
-        given(helper.isWhitelisted(ghUser)).willReturn(true);
-
         // WHEN
         GhprbPullRequest ghprbPullRequest = new GhprbPullRequest(pr, helper, repo);
 
@@ -92,9 +89,6 @@ public class GhprbPullRequestTest {
         given(repo.getName()).willReturn(null);
         doNothing().when(repo).addOrUpdateComment(eq(10), anyString(), anyString(), null, null);
 
-        // Mocks for Ghprb
-        given(helper.isWhitelisted(ghUser)).willReturn(true);
-
         GhprbPullRequest ghprbPullRequest = new GhprbPullRequest(pr, helper, repo);
         GhprbRepository ghprbRepository = mock(GhprbRepository.class);
         given(ghprbRepository.getName()).willReturn("name");
@@ -128,9 +122,6 @@ public class GhprbPullRequestTest {
         // Mocks for GhprbRepository
         given(repo.getName()).willReturn("name");
         doNothing().when(repo).addOrUpdateComment(eq(10), anyString(), anyString(), null, null);
-
-        // Mocks for Ghprb
-        given(helper.isWhitelisted(ghUser)).willReturn(true);
 
         GhprbPullRequest ghprbPullRequest = new GhprbPullRequest(pr, helper, repo);
         GhprbRepository ghprbRepository = mock(GhprbRepository.class);

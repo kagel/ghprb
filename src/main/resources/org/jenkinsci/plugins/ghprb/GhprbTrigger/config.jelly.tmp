@@ -1,7 +1,4 @@
 <j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
-  <f:entry title="${%Admin list}" field="adminlist">
-    <f:textarea default="${descriptor.adminlist}"/>
-  </f:entry>
   <f:entry title="Use github hooks for build triggering" field="useGitHubHooks">
     <f:checkbox />
   </f:entry>
@@ -9,24 +6,9 @@
     <f:entry title="${%Shared secret}" field="secret">
       <f:password />
     </f:entry>
-    <f:entry title="${%Success message}" field="msgSuccess">
-      <f:textarea default="${descriptor.msgSuccess}"/>
-    </f:entry>
-    <f:entry title="${%Failure message}" field="msgFailure">
-      <f:textarea default="${descriptor.msgFailure}"/>
-    </f:entry>
-	<f:entry title="${%Trigger phrase}" field="triggerPhrase">
-	  <f:textbox />
-	</f:entry>
-	<f:entry title="Only use trigger phrase for build triggering" field="onlyTriggerPhrase">
-	  <f:checkbox />
-	</f:entry>
 	<f:entry title="${%Close failed pull request automatically?}" field="autoCloseFailedPullRequests">
 	  <f:checkbox default="${descriptor.autoCloseFailedPullRequests}"/>
 	</f:entry>
-    <f:entry title="${%Skip build phrase}" field="skipBuildPhrase">
-  	  <f:textarea default="${descriptor.skipBuildPhrase}"/>
-    </f:entry>
 	<f:entry title="${%Display build errors on downstream builds?}" field="displayBuildErrorsOnDownstreamBuilds">
 	  <f:checkbox default="${descriptor.displayBuildErrorsOnDownstreamBuilds}"/>
 	</f:entry>

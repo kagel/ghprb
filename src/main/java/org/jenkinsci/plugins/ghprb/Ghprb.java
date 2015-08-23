@@ -15,7 +15,6 @@ import com.cloudbees.plugins.credentials.domains.SchemeSpecification;
 import com.cloudbees.plugins.credentials.domains.URIRequirementBuilder;
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl;
 import com.coravy.hudson.plugins.github.GithubProjectProperty;
-
 import hudson.Util;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
@@ -27,7 +26,7 @@ import hudson.model.TaskListener;
 import hudson.security.ACL;
 import hudson.util.DescribableList;
 import hudson.util.Secret;
-
+import jenkins.model.Jenkins;
 import org.apache.commons.collections.Predicate;
 import org.apache.commons.collections.PredicateUtils;
 import org.apache.commons.collections.functors.InstanceofPredicate;
@@ -37,17 +36,20 @@ import org.jenkinsci.plugins.ghprb.extensions.GhprbExtensionDescriptor;
 import org.jenkinsci.plugins.ghprb.extensions.GhprbProjectExtension;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 import org.kohsuke.github.GHCommitState;
-import org.kohsuke.github.GHUser;
 
 import java.net.URI;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import jenkins.model.Jenkins;
 
 /**
  * @author janinko
@@ -89,11 +91,6 @@ public class Ghprb {
         }
     }
 
-    public void addWhitelist(String author) {
-        logger.log(Level.INFO, "Adding {0} to whitelist", author);
-        trigger.addWhitelist(author);
-    }
-    
     public boolean isProjectDisabled() {
         return project.isDisabled();
     }
@@ -121,96 +118,6 @@ public class Ghprb {
     void stop() {
         repository = null;
         builds = null;
-    }
-
-    // These used to be stored on the object in the constructor.
-    // But because the object is only instantiated once per PR, configuration would go stale.
-    // Some optimization could be done around re-compiling regex/hash sets, but beyond that we still have to re-pull the text.
-    private Pattern retestPhrasePattern() {
-        return Pattern.compile(trigger.getDescriptor().getRetestPhrase());
-    }
-
-    private Pattern whitelistPhrasePattern() {
-        return Pattern.compile(trigger.getDescriptor().getWhitelistPhrase());
-    }
-
-    private Pattern oktotestPhrasePattern() {
-        return Pattern.compile(trigger.getDescriptor().getOkToTestPhrase());
-    }
-
-    private String triggerPhrase() {
-        return trigger.getTriggerPhrase();
-    }
-
-    private HashSet<String> admins() {
-        HashSet<String> adminList;
-        adminList = new HashSet<String>(Arrays.asList(trigger.getAdminlist().split("\\s+")));
-        adminList.remove("");
-        return adminList;
-    }
-
-    private HashSet<String> whitelisted() {
-        HashSet<String> whitelistedList;
-        whitelistedList = new HashSet<String>(Arrays.asList(trigger.getWhitelist().split("\\s+")));
-        whitelistedList.remove("");
-        return whitelistedList;
-    }
-
-    private HashSet<String> organisations() {
-        HashSet<String> organisationsList;
-        organisationsList = new HashSet<String>(Arrays.asList(trigger.getOrgslist().split("\\s+")));
-        organisationsList.remove("");
-        return organisationsList;
-    }
-
-    public boolean isRetestPhrase(String comment) {
-        return retestPhrasePattern().matcher(comment).matches();
-    }
-
-    public boolean isWhitelistPhrase(String comment) {
-        return whitelistPhrasePattern().matcher(comment).matches();
-    }
-
-    public boolean isOktotestPhrase(String comment) {
-        return oktotestPhrasePattern().matcher(comment).matches();
-    }
-
-    public boolean isTriggerPhrase(String comment) {
-        return !triggerPhrase().equals("") && comment != null && comment.contains(triggerPhrase());
-    }
-
-    public boolean ifOnlyTriggerPhrase() {
-        return trigger.getOnlyTriggerPhrase();
-    }
-
-    public boolean isWhitelisted(GHUser user) {
-        return trigger.getPermitAll()
-                || whitelisted().contains(user.getLogin())
-                || admins().contains(user.getLogin())
-                || isInWhitelistedOrganisation(user);
-    }
-
-    public boolean isAdmin(GHUser user) {
-        return admins().contains(user.getLogin())
-                || (trigger.getAllowMembersOfWhitelistedOrgsAsAdmin()
-                        && isInWhitelistedOrganisation(user));
-    }
-
-    public boolean isBotUser(GHUser user) {
-        return user != null && user.getLogin().equals(getGitHub().getBotUserLogin());
-    }
-
-    private boolean isInWhitelistedOrganisation(GHUser user) {
-        for (String organisation : organisations()) {
-            if (getGitHub().isUserMemberOfOrganization(organisation, user)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    List<GhprbBranch> getWhiteListTargetBranches() {
-        return trigger.getWhiteListTargetBranches();
     }
 
     public static String replaceMacros(AbstractBuild<?, ?> build, TaskListener listener, String inputString) {
@@ -263,18 +170,9 @@ public class Ghprb {
         return state;
     }
 
-    public static Set<String> createSet(String list) {
-        String listString = list == null ? "" : list;
-        List<String> listList = Arrays.asList(listString.split("\\s+"));
-        Set<String> listSet = new HashSet<String>(listList);
-        listSet.remove("");
-        return listSet;
-    }
-    
-
     public static GhprbCause getCause(AbstractBuild<?, ?> build) {
         Cause cause = build.getCause(GhprbCause.class);
-        if (cause == null || (!(cause instanceof GhprbCause))) {
+        if (cause == null) {
             return null;
         }
         return (GhprbCause) cause;
@@ -286,7 +184,7 @@ public class Ghprb {
 
     public static GhprbTrigger extractTrigger(AbstractProject<?, ?> p) {
         GhprbTrigger trigger = p.getTrigger(GhprbTrigger.class);
-        if (trigger == null || (!(trigger instanceof GhprbTrigger))) {
+        if (trigger == null) {
             return null;
         }
         return trigger;
@@ -331,24 +229,6 @@ public class Ghprb {
         // Filter extensions by desired interface
         filterList(copied, PredicateUtils.anyPredicate(createPredicate(types)));
         return copied;
-    }
-    
-    public static DescribableList<GhprbExtension, GhprbExtensionDescriptor> matchesAll(DescribableList<GhprbExtension, GhprbExtensionDescriptor> extensions, Class<?> ...types) {
-        Predicate predicate = PredicateUtils.allPredicate(createPredicate(types));
-        DescribableList<GhprbExtension, GhprbExtensionDescriptor> copyExtensions = new DescribableList<GhprbExtension, GhprbExtensionDescriptor>(Saveable.NOOP);
-        
-        copyExtensions.addAll(extensions);
-        filterList(copyExtensions, predicate);
-        return copyExtensions;
-    }
-    
-    public static DescribableList<GhprbExtension, GhprbExtensionDescriptor> matchesSome(DescribableList<GhprbExtension, GhprbExtensionDescriptor> extensions, Class<?> ...types) {
-        Predicate predicate = PredicateUtils.anyPredicate(createPredicate(types));
-        DescribableList<GhprbExtension, GhprbExtensionDescriptor> copyExtensions = new DescribableList<GhprbExtension, GhprbExtensionDescriptor>(Saveable.NOOP);
-        
-        copyExtensions.addAll(extensions);
-        filterList(copyExtensions, predicate);
-        return copyExtensions;
     }
     
     public static DescribableList<GhprbExtension, GhprbExtensionDescriptor> onlyOneEntry(DescribableList<GhprbExtension, GhprbExtensionDescriptor> extensions, Class<?> ...types) {

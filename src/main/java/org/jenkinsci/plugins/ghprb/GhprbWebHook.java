@@ -43,16 +43,8 @@ public class GhprbWebHook {
                 GHIssueState state = issueComment.getIssue().getState();
                 if (state == GHIssueState.CLOSED) {
                     logger.log(Level.INFO, "Skip comment on closed PR");
-                    return;
                 }
                 
-                if (matchRepo(repo, issueComment.getRepository())) {
-                    logger.log(Level.INFO, "Checking issue comment ''{0}'' for repo {1}", 
-                            new Object[] { issueComment.getComment(), repoName }
-                    );
-                    repo.onIssueCommentHook(issueComment);
-                }
-
             } else if ("pull_request".equals(event)) {
                 GHEventPayload.PullRequest pr = gh.parseEventPayload(
                         new StringReader(payload), 

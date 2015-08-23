@@ -286,22 +286,14 @@ public class GhprbTestUtil {
         jsonObject.put("username", "user");
         jsonObject.put("password", "1111");
         jsonObject.put("accessToken", "accessToken");
-        jsonObject.put("adminlist", "user");
         jsonObject.put("allowMembersOfWhitelistedOrgsAsAdmin", "false");
         jsonObject.put("publishedURL", "defaultPublishedURL");
-        jsonObject.put("requestForTestingPhrase", "test this");
-        jsonObject.put("whitelistPhrase", "");
-        jsonObject.put("okToTestPhrase", "ok to test");
-        jsonObject.put("retestPhrase", "retest this please");
-        jsonObject.put("skipBuildPhrase", "[skip ci]");
         jsonObject.put("cron", "0 0 31 2 0");
         jsonObject.put("logExcerptLines", "0");
         jsonObject.put("unstableAs", "FAILURE");
         jsonObject.put("testMode", "true");
         jsonObject.put("autoCloseFailedPullRequests", "false");
         jsonObject.put("displayBuildErrorsOnDownstreamBuilds", "false");
-        jsonObject.put("msgSuccess", "Success");
-        jsonObject.put("msgFailure", "Failure");
         jsonObject.put("commitStatusContext", "Status Context");
         
         JSONObject githubAuth = new JSONObject();
@@ -350,17 +342,10 @@ public class GhprbTestUtil {
         }
 
         JSONObject defaults = new JSONObject();
-        defaults.put("adminlist", "user");
-        defaults.put("whitelist", "user");
-        defaults.put("orgslist", "");
         defaults.put("cron", "0 0 31 2 0");
-        defaults.put("triggerPhrase", "retest this please");
-        defaults.put("onlyTriggerPhrase", false);
         defaults.put("useGitHubHooks", false);
-        defaults.put("permitAll", false);
         defaults.put("autoCloseFailedPullRequests", false);
         defaults.put("displayBuildErrorsOnDownstreamBuilds", false);
-        defaults.put("allowMembersOfWhitelistedOrgsAsAdmin", false);
         defaults.put("gitHubApi", "https://api.github.com");
 
         for ( Entry<String, Object> next: values.entrySet()) {

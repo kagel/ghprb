@@ -1,8 +1,9 @@
 package org.jenkinsci.plugins.ghprb;
 
+import hudson.model.AbstractProject;
+import hudson.model.queue.QueueTaskFuture;
 import org.apache.commons.codec.binary.Hex;
 import org.jenkinsci.plugins.ghprb.extensions.status.GhprbSimpleStatus;
-import org.joda.time.DateTime;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -11,7 +12,6 @@ import org.junit.runner.RunWith;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.kohsuke.github.GHCommitPointer;
 import org.kohsuke.github.GHCommitState;
-import org.kohsuke.github.GHIssueComment;
 import org.kohsuke.github.GHIssueState;
 import org.kohsuke.github.GHPullRequest;
 import org.kohsuke.github.GHRateLimit;
@@ -26,9 +26,6 @@ import org.mockito.runners.MockitoJUnitRunner;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import hudson.model.AbstractProject;
-import hudson.model.queue.QueueTaskFuture;
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -49,15 +46,15 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isNull;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.only;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verifyZeroInteractions;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.doReturn;
 
 /**
  * Unit tests for {@link GhprbRepository}.
@@ -134,8 +131,6 @@ public class GhprbRepositoryTest {
         mockHeadAndBase();
         mockCommitList();
 
-        given(helper.ifOnlyTriggerPhrase()).willReturn(true);
-
         pulls.put(1, ghprbPullRequest);
 
         given(ghPullRequest.getUpdatedAt()).willReturn(UPDATE_DATE);
@@ -156,8 +151,6 @@ public class GhprbRepositoryTest {
 
         mockHeadAndBase();
         mockCommitList();
-
-        given(helper.ifOnlyTriggerPhrase()).willReturn(true);
 
         pulls.put(1, ghprbPullRequest);
 
@@ -181,13 +174,6 @@ public class GhprbRepositoryTest {
         verify(ghPullRequest, times(1)).getUpdatedAt();
         verify(ghPullRequest, times(1)).getBody();
         verifyNoMoreInteractions(ghPullRequest);
-
-        verify(helper).ifOnlyTriggerPhrase();
-        verify(helper).getWhiteListTargetBranches();
-        verify(helper, times(3)).isProjectDisabled();
-        verifyNoMoreInteractions(helper);
-        verifyNoMoreInteractions(gt);
-
         verifyZeroInteractions(ghUser);
     }
 
@@ -196,8 +182,6 @@ public class GhprbRepositoryTest {
         // GIVEN
         List<GHPullRequest> ghPullRequests = createListWithMockPR();
         ghPullRequests.add(ghPullRequest);
-
-        GhprbBuilds builds = mockBuilds();
 
         mockHeadAndBase();
         mockCommitList();
@@ -214,8 +198,6 @@ public class GhprbRepositoryTest {
 
         given(ghUser.getEmail()).willReturn("email");
 
-        given(helper.ifOnlyTriggerPhrase()).willReturn(false);
-        given(helper.isWhitelisted(ghUser)).willReturn(true);
         given(helper.getTrigger()).willReturn(trigger);
 
         // WHEN
@@ -227,7 +209,6 @@ public class GhprbRepositoryTest {
         verifyNoMoreInteractions(gt);
 
         /** GH PR verifications */
-        verify(builds, times(1)).build(any(GhprbPullRequest.class), any(GHUser.class), any(String.class));
         verify(ghRepository, times(1)).getPullRequests(OPEN); // Call to Github API
         verify(ghRepository, times(1)).createCommitStatus(eq("head sha"), eq(PENDING), isNull(String.class), eq(msg), eq("default")); // Call to Github API
         verifyNoMoreInteractions(ghRepository);
@@ -244,10 +225,7 @@ public class GhprbRepositoryTest {
         verify(ghPullRequest, times(2)).getBody();
         verifyNoMoreInteractions(ghPullRequest);
 
-        verify(helper, times(1)).isWhitelisted(eq(ghUser)); // Call to Github API
-        verify(helper, times(2)).ifOnlyTriggerPhrase();
         verify(helper, times(1)).getBuilds();
-        verify(helper, times(2)).getWhiteListTargetBranches();
         verify(helper, times(5)).isProjectDisabled();
         verifyNoMoreInteractions(helper);
 
@@ -263,178 +241,10 @@ public class GhprbRepositoryTest {
         return builds;
     }
 
-    @Test
-    public void testCheckMethodWhenPrWasUpdatedWithNonKeyPhrase() throws IOException {
-        // GIVEN
-        List<GHPullRequest> ghPullRequests = createListWithMockPR();
-
-        mockHeadAndBase();
-        mockCommitList();
-        GhprbBuilds builds = mockBuilds();
-        
-        Date now = new Date();
-        Date tomorrow = new DateTime().plusDays(1).toDate();
-
-
-        given(ghRepository.getPullRequests(eq(GHIssueState.OPEN))).willReturn(ghPullRequests);
-        given(ghPullRequest.getUpdatedAt()).willReturn(now).willReturn(now).willReturn(tomorrow);
-        given(ghPullRequest.getNumber()).willReturn(100);
-        given(ghPullRequest.getMergeable()).willReturn(true);
-        given(ghPullRequest.getTitle()).willReturn("title");
-        given(ghPullRequest.getUser()).willReturn(ghUser);
-        given(ghPullRequest.getHtmlUrl()).willReturn(new URL("https://github.com/org/repo/pull/100"));
-        given(ghPullRequest.getApiURL()).willReturn(new URL("https://github.com/org/repo/pull/100"));
-
-        given(ghUser.getEmail()).willReturn("email");
-        given(ghUser.getLogin()).willReturn("login");
-
-        given(helper.ifOnlyTriggerPhrase()).willReturn(false);
-        given(helper.isWhitelisted(ghUser)).willReturn(true);
-        given(helper.getTrigger()).willReturn(trigger);
-
-        // WHEN
-        ghprbRepository.check(); // PR was created
-        
-        mockComments("comment body", tomorrow);
-        ghprbRepository.check(); // PR was updated
-
-        // THEN
-        verifyGetGithub(2);
-        verifyNoMoreInteractions(gt);
-
-        /** GH PR verifications */
-        verify(builds, times(1)).build(any(GhprbPullRequest.class), any(GHUser.class), any(String.class));
-        verify(ghRepository, times(2)).getPullRequests(eq(OPEN)); // Call to Github API
-        verify(ghRepository, times(1)).createCommitStatus(eq("head sha"), eq(PENDING), isNull(String.class), eq(msg), eq("default")); // Call to Github API
-        verifyNoMoreInteractions(ghRepository);
-
-        verify(ghPullRequest, times(2)).getTitle();
-        verify(ghPullRequest, times(2)).getUser();
-        verify(ghPullRequest, times(1)).getMergeable(); // Call to Github API
-        verify(ghPullRequest, times(8)).getHead();
-        verify(ghPullRequest, times(3)).getBase();
-        verify(ghPullRequest, times(5)).getNumber();
-        verify(ghPullRequest, times(1)).getHtmlUrl();
-        verify(ghPullRequest, times(3)).getUpdatedAt();
-
-        verify(ghPullRequest, times(1)).getComments();
-        verify(ghPullRequest, times(1)).listCommits();
-        verify(ghPullRequest, times(2)).getBody();
-        verifyNoMoreInteractions(ghPullRequest);
-
-        verify(helper, times(1)).isWhitelisted(eq(ghUser)); // Call to Github API
-        verify(helper, times(2)).ifOnlyTriggerPhrase();
-        verify(helper, times(1)).getBuilds();
-        verify(helper, times(2)).getWhiteListTargetBranches();
-
-        // verify(helper).isBotUser(eq(ghUser));
-        verify(helper).isWhitelistPhrase(eq("comment body"));
-        verify(helper).isOktotestPhrase(eq("comment body"));
-        verify(helper).isRetestPhrase(eq("comment body"));
-        verify(helper).isTriggerPhrase(eq("comment body"));
-        verify(helper, times(6)).isProjectDisabled();
-        verifyNoMoreInteractions(helper);
-
-        verify(ghUser, times(1)).getEmail(); // Call to Github API
-        verify(ghUser, times(1)).getLogin();
-        verifyNoMoreInteractions(ghUser);
-    }
-
     private List<GHPullRequest> createListWithMockPR() {
         List<GHPullRequest> ghPullRequests = new ArrayList<GHPullRequest>();
         ghPullRequests.add(ghPullRequest);
         return ghPullRequests;
-    }
-
-    @Test
-    public void testCheckMethodWhenPrWasUpdatedWithRetestPhrase() throws IOException {
-        // GIVEN
-        List<GHPullRequest> ghPullRequests = createListWithMockPR();
-        Date now = new Date();
-        Date tomorrow = new DateTime().plusDays(1).toDate();
-
-        mockHeadAndBase();
-        mockCommitList();
-        GhprbBuilds builds = mockBuilds();
-
-        given(ghRepository.getPullRequests(eq(GHIssueState.OPEN))).willReturn(ghPullRequests);
-        given(ghPullRequest.getUpdatedAt()).willReturn(now).willReturn(now).willReturn(tomorrow);
-        given(ghPullRequest.getNumber()).willReturn(100);
-        given(ghPullRequest.getMergeable()).willReturn(true);
-        given(ghPullRequest.getTitle()).willReturn("title");
-        given(ghPullRequest.getUser()).willReturn(ghUser);
-        given(ghPullRequest.getHtmlUrl()).willReturn(new URL("https://github.com/org/repo/pull/100"));
-        given(ghPullRequest.getApiURL()).willReturn(new URL("https://github.com/org/repo/pull/100"));
-
-        given(ghUser.getEmail()).willReturn("email");
-        given(ghUser.getLogin()).willReturn("login");
-
-        given(helper.ifOnlyTriggerPhrase()).willReturn(false);
-        given(helper.isRetestPhrase(eq("test this please"))).willReturn(true);
-        given(helper.isWhitelisted(ghUser)).willReturn(true);
-        given(helper.getTrigger()).willReturn(trigger);
-
-        // WHEN
-        ghprbRepository.check(); // PR was created
-        
-        mockComments("test this please", tomorrow);
-        ghprbRepository.check(); // PR was updated
-
-        // THEN
-        verifyGetGithub(2);
-        verifyNoMoreInteractions(gt);
-
-        /** GH PR verifications */
-        verify(builds, times(2)).build(any(GhprbPullRequest.class), any(GHUser.class), any(String.class));
-        verifyNoMoreInteractions(builds);
-        
-        verify(ghRepository, times(2)).getPullRequests(eq(OPEN)); // Call to Github API
-        verify(ghRepository, times(2)).createCommitStatus(eq("head sha"), eq(PENDING), isNull(String.class), eq(msg), eq("default")); // Call to Github API
-        verifyNoMoreInteractions(ghRepository);
-
-        verify(ghPullRequest, times(2)).getTitle();
-        verify(ghPullRequest, times(2)).getUser();
-        verify(ghPullRequest, times(2)).getMergeable(); // Call to Github API
-        verify(ghPullRequest, times(8)).getHead();
-        verify(ghPullRequest, times(3)).getBase();
-        verify(ghPullRequest, times(5)).getNumber();
-        verify(ghPullRequest, times(3)).getUpdatedAt();
-        verify(ghPullRequest, times(1)).getHtmlUrl();
-
-        verify(ghPullRequest, times(1)).getComments();
-        verify(ghPullRequest, times(2)).listCommits();
-
-        verify(ghPullRequest, times(2)).getBody();
-        verifyNoMoreInteractions(ghPullRequest);
-
-        verify(helper, times(2)).isWhitelisted(eq(ghUser)); // Call to Github API
-        verify(helper, times(2)).ifOnlyTriggerPhrase();
-        verify(helper, times(2)).getBuilds();
-        verify(helper, times(2)).getWhiteListTargetBranches();
-
-        verify(helper).isWhitelistPhrase(eq("test this please"));
-        verify(helper).isOktotestPhrase(eq("test this please"));
-        verify(helper).isRetestPhrase(eq("test this please"));
-        verify(helper).isAdmin(eq(ghUser));
-        verify(helper, times(6)).isProjectDisabled();
-        verifyNoMoreInteractions(helper);
-
-        verify(ghUser, times(1)).getEmail(); // Call to Github API
-        verify(ghUser, times(1)).getLogin();
-        verifyNoMoreInteractions(ghUser);
-
-        verify(builds, times(2)).build(any(GhprbPullRequest.class), any(GHUser.class), any(String.class));
-        verifyNoMoreInteractions(builds);
-    }
-
-    private void mockComments(String commentBody, Date updated) throws IOException {
-        GHIssueComment comment = mock(GHIssueComment.class);
-        given(comment.getUpdatedAt()).willReturn(updated);
-        given(comment.getUser()).willReturn(ghUser);
-        given(comment.getBody()).willReturn(commentBody);
-        List<GHIssueComment> comments = new ArrayList<GHIssueComment>();
-        comments.add(comment);
-        given(ghPullRequest.getComments()).willReturn(comments);
     }
 
     private void mockHeadAndBase() {
@@ -509,7 +319,7 @@ public class GhprbRepositoryTest {
         mac.init(keySpec);
 
         byte[] signatureBytes = mac.doFinal(body.getBytes("UTF-8"));
-        String signature = new String(Hex.encodeHexString(signatureBytes));
+        String signature = Hex.encodeHexString(signatureBytes);
         return "sha1=" + signature;
     }
 
@@ -517,7 +327,6 @@ public class GhprbRepositoryTest {
         /** Mock PR data */
         given(ghPullRequest.getUser()).willReturn(ghUser);
         given(ghUser.getEmail()).willReturn("email");
-        given(helper.isWhitelisted(ghUser)).willReturn(true);
         given(ghPullRequest.getUpdatedAt()).willReturn(UPDATE_DATE);
 
         /** Mock head\base */
